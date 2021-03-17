@@ -1,0 +1,77 @@
+# Envoy Proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-proxy
+  annotations:
+    # Adjust according to your kubernetes cluster environment
+    # https://kubernetes.io/docs/concepts/services-networking/#publishing-services-service-types
+    # Example for AWS
+    # Requires a security group allowing access to the service NodePort from 0.0.0.0/tcp
+    # service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  externalTrafficPolicy: Local
+  ports:
+    - name: envoy-proxy
+      # Publicly exposed CloudGen Access Proxy port
+      # Port must match the one defined in CloudGen Enterprise Console
+      port: 443
+      protocol: TCP
+      targetPort: envoy
+  selector:
+    app: envoy-proxy
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-proxy
+  template:
+    metadata:
+      name: envoy-proxy
+      labels:
+        app: envoy-proxy
+    spec:
+      containers:
+        - name: envoy-proxy
+          image: fydeinc/envoyproxy-centos:latest
+          imagePullPolicy: Always
+          env:
+            - name: LOGLEVEL
+              value: info
+            - name: COMPONENTLOGLEVEL
+              value: grpc:debug,config:debug
+            - name: FYDE_PROXY_HOST
+              value: fyde-orchestrator
+            - name: FYDE_PROXY_PORT
+              value: "50051"
+          ports:
+            - name: envoy
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64M
+            limits:
+              cpu: 200m
+              memory: 128M
+          readinessProbe:
+            tcpSocket:
+              port: envoy
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: envoy
+            initialDelaySeconds: 30
+            periodSeconds: 2
+            successThreshold: 1
+            failureThreshold: 3

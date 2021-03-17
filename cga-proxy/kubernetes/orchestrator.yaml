@@ -1,0 +1,72 @@
+# Fyde Proxy Orchestrator
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fyde-secrets
+type: Opaque
+stringData:
+  enrollment_token: <paste here your Fyde Access Proxy enrollment link>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fyde-orchestrator
+spec:
+  ports:
+    - name: fyde-orchestrator
+      port: 50051
+      protocol: TCP
+      targetPort: proxy
+  selector:
+    app: fyde-orchestrator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fyde-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fyde-orchestrator
+  template:
+    metadata:
+      name: fyde-orchestrator
+      labels:
+        app: fyde-orchestrator
+    spec:
+      containers:
+        - name: fyde-orchestrator
+          image: fydeinc/fydeproxy-centos:latest
+          imagePullPolicy: Always
+          env:
+            - name: FYDE_ENROLLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: fyde-secrets
+                  key: enrollment_token
+          ports:
+            - name: proxy
+              containerPort: 50051
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128M
+            limits:
+              cpu: 100m
+              memory: 256M
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 30
+            periodSeconds: 2
+            successThreshold: 1
+            failureThreshold: 3
