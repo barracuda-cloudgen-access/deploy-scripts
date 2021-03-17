@@ -1,0 +1,547 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  Fyde Access Proxy Cloudformation template
+
+Parameters:
+
+  FydeAccessProxyToken:
+    Description: >-
+      Fyde Access Proxy Token for this proxy (obtained from the console after proxy creation).
+    Type: String
+    MinLength: '20'
+    NoEcho: true
+    AllowedPattern: '^https:\/\/.*\.fyde\.com\/proxies.*proxy_auth_token.*$'
+
+  FydeAccessProxyPublicPort:
+    Description: >-
+      Public port for this proxy (must match the value configured in the console for this proxy).
+    Default: 443
+    Type: Number
+    MinValue: 1
+    MaxValue: 65535
+
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Select the Virtual Private Cloud (VPC) to use.
+    ConstraintDescription: >-
+      must be the VPC Id of an existing Virtual Private Cloud. Outbound traffic
+      for the default security group associated with this VPC should be enabled.
+
+  NLBPublicSubnets:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: >-
+      Select the Public Subnet Ids to use for the Network Load Balancer.
+      NOTE: Use Public Subnets only.
+    ConstraintDescription: >-
+      recomended to be a list of at least two existing subnets associated with at least
+      two different availability zones. They should be residing in the selected
+      Virtual Private Cloud and should allow access to internet
+
+  EC2Subnets:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: >-
+      Select the Subnet Ids to use for the EC2 instances.
+      NOTE: Use Private Subnets with NAT Gateway configured or Public Subnets.
+    ConstraintDescription: >-
+      recomended to be a list of at least two existing subnets associated with at least
+      two different availability zones. They should be residing in the selected
+      Virtual Private Cloud and should allow access to internet
+
+  EC2AssociatePublicIpAddress:
+    Description: >-
+      If you specify true, each instance in the Auto Scaling group receives a unique public IP address.
+      Default is false.
+    Type: String
+    Default: false
+    AllowedValues:
+      - false
+      - true
+
+  EC2ASGMaxSize:
+    Description: Enter the Max Size for the ASG
+    Default: 3
+    Type: Number
+    MinValue: 1
+
+  EC2ASGMinSize:
+    Description: Enter the Min Size for the ASG
+    Default: 2
+    Type: Number
+    MinValue: 1
+
+  EC2ASGDesiredCapacity:
+    Description: Enter the desired capacity for the ASG
+    Default: 2
+    Type: Number
+    MinValue: 1
+
+  EC2KeyName:
+    Description: EC2 instance key name
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+
+  EC2InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.small
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+    ConstraintDescription: must be a valid EC2 instance type.
+
+  EC2AMI:
+    Description: >-
+      Use 'fyde' to use AMI maintained and secured by Fyde.
+      Suported types are CentOS or AWS Linux based.
+    Type: String
+    Default: fyde
+    ConstraintDescription: must be a valid EC2 AMI.
+
+  RedisSubnets:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: >-
+      Select the Subnet Ids to use for the redis instances. At least two subnets on different Availability Zones must be provided.
+      Required although Redis is only created when EC2ASGDesiredCapacity is not 1.
+      NOTE: Use Private Subnets.
+
+  CloudWatchLogs:
+    Description: >-
+      Send '/var/log/message' logs to CloudWatch.
+      Default is true.
+    Type: String
+    Default: true
+    AllowedValues:
+      - true
+      - false
+
+  CloudWatchLogsRetentionInDays:
+    Description: Days to keep CloudWatch logs (0 = never delete).
+    Default: 7
+    Type: Number
+    MinValue: 0
+
+  FydeProxyLoglevel:
+    Description: >-
+      Set the Fyde Proxy orchestrator log level.
+      Default is info.
+    Type: String
+    Default: info
+    AllowedValues:
+      - debug
+      - info
+      - warning
+      - error
+      - critical
+
+Conditions:
+
+  UseFydeAMI: !Equals [!Ref EC2AMI, "fyde"]
+  RedisRequired: !Not [!Equals [!Ref EC2ASGDesiredCapacity, 1]]
+  CloudWatchLogsEnabled: !Equals [!Ref CloudWatchLogs, true]
+
+Resources:
+
+#
+# Get Latest AMI
+#
+
+  CloudWatchLogsGroupGetLatestAMI:
+    Type: AWS::Logs::LogGroup
+    Condition: UseFydeAMI
+    Properties:
+      LogGroupName: '/aws/lambda/FydeAccessProxyGetLatestAMI'
+      RetentionInDays: !Ref CloudWatchLogsRetentionInDays
+
+  RoleGetLatestAMI:
+    Type: AWS::IAM::Role
+    Condition: UseFydeAMI
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DescribeImages
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ec2:DescribeImages
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !GetAtt CloudWatchLogsGroupGetLatestAMI.Arn
+
+  LambdaGetLatestAMI:
+    Type: AWS::Lambda::Function
+    Condition: UseFydeAMI
+    DependsOn: CloudWatchLogsGroupGetLatestAMI
+    Properties:
+      FunctionName: FydeAccessProxyGetLatestAMI
+      Runtime: python3.6
+      Handler: index.handler
+      Role: !Sub ${RoleGetLatestAMI.Arn}
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          import traceback
+
+          def handler(event, context):
+            try:
+              response = boto3.client('ec2').describe_images(
+                  Owners=[event['ResourceProperties']['Owner']],
+                  Filters=[
+                    {'Name': 'name', 'Values': [event['ResourceProperties']['Name']]},
+                    {'Name': 'architecture', 'Values': [event['ResourceProperties']['Architecture']]},
+                    {'Name': 'root-device-type', 'Values': ['ebs']},
+                  ],
+              )
+
+              amis = sorted(response['Images'],
+                            key=lambda x: x['CreationDate'],
+                            reverse=True)
+              id = amis[0]['ImageId']
+
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, id)
+            except:
+              traceback.print_last()
+              cfnresponse.send(event, context, cfnresponse.FAIL, {}, "ok")
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  CustomGetLatestAMI:
+    Type: Custom::FindAMI
+    Condition: UseFydeAMI
+    Properties:
+      ServiceToken: !Sub ${LambdaGetLatestAMI.Arn}
+      Owner: '766535289950'
+      Name: 'amazonlinux-2-base_*'
+      Architecture: x86_64
+
+#
+# Secret
+#
+
+  FydeEnrollmentToken:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: fyde_enrollment_token
+      Description: Fyde Access Proxy Token
+      SecretString: !Ref FydeAccessProxyToken
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+#
+# NLB
+#
+
+  NLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets: !Ref NLBPublicSubnets
+      Scheme: internet-facing
+      Type: network
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  NLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroup
+      LoadBalancerArn: !Ref NLB
+      Port: !Ref FydeAccessProxyPublicPort
+      Protocol: TCP
+
+  NLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 3
+      Port: !Ref FydeAccessProxyPublicPort
+      Protocol: TCP
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+#
+# Security Groups
+#
+
+  InboundEC2SecGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow inbound access to EC2 instances on the configured port
+      # https://docs.aws.amazon.com/elasticloadbalancing/latest/network/target-group-register-targets.html#target-security-groups
+      # You cannot allow traffic from clients to targets through the load balancer using the security groups for the clients in the security groups for the targets.
+      # Use the client CIDR blocks in the target security groups instead.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref FydeAccessProxyPublicPort
+          ToPort: !Ref FydeAccessProxyPublicPort
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  ResourceSecGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Use this group to allow FydeAccessProxy access to internal resources
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  RedisSecGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: RedisRequired
+    Properties:
+      GroupDescription: Used to allow FydeAccessProxy access to redis
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  RedisSecGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: RedisRequired
+    Properties:
+      FromPort: 6379
+      ToPort: 6379
+      GroupId: !Ref RedisSecGroup
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref RedisSecGroup
+
+#
+# Fyde Access Proxy Instances
+#
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MaxBatchSize: 1
+    Properties:
+      VPCZoneIdentifier: !Ref EC2Subnets
+      Cooldown: 120
+      LaunchConfigurationName: !Ref LaunchConfig
+      MaxSize: !Ref EC2ASGMaxSize
+      MinSize: !Ref EC2ASGMinSize
+      DesiredCapacity: !Ref EC2ASGDesiredCapacity
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      TargetGroupARNs:
+        - !Ref NLBTargetGroup
+      TerminationPolicies:
+        - OldestInstance
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+          PropagateAtLaunch: 'true'
+        - Key: Application
+          Value: FydeAccessProxyASG
+          PropagateAtLaunch: 'true'
+        - Key: Redis
+          Value: !If [ RedisRequired, 'true', 'false' ]
+          PropagateAtLaunch: 'true'
+
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: !Ref EC2AssociatePublicIpAddress
+      KeyName: !Ref EC2KeyName
+      ImageId: !If [ UseFydeAMI, !Ref CustomGetLatestAMI, !Ref EC2AMI ]
+      SecurityGroups:
+        - !Ref InboundEC2SecGroup
+        - !Ref ResourceSecGroup
+        - !If [ RedisRequired, !Ref RedisSecGroup, !Ref 'AWS::NoValue' ]
+      InstanceType: !Ref EC2InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64:
+          !Join
+            - "\n"
+            - - '#!/bin/bash'
+              - 'set -xeuo pipefail'
+              - 'echo "RateLimitBurst=10000" >> /etc/systemd/journald.conf'
+              - 'systemctl restart systemd-journald.service'
+              - !If [ CloudWatchLogsEnabled, 'curl -sL "https://url.fyde.me/config-ec2-cloudwatch-logs" | bash -s -- \', Ref 'AWS::NoValue' ]
+              - !If [ CloudWatchLogsEnabled, '  -l "/aws/ec2/FydeAccessProxy" \', Ref 'AWS::NoValue' ]
+              - !If [ CloudWatchLogsEnabled, !Sub '  -r "${AWS::Region}"', !Ref 'AWS::NoValue' ]
+              - 'curl -sL "https://url.fyde.me/install-fyde-proxy-linux" | bash -s -- \'
+              - '  -u \'
+              - !Join
+                - ' '
+                - - !Sub ' -p "${FydeAccessProxyPublicPort}" -l "${FydeProxyLoglevel}" '
+                  - !If [ RedisRequired, '\', !Ref 'AWS::NoValue' ]
+              - !If [ RedisRequired, !Sub '  -r "${RedisCacheReplicationGroup.PrimaryEndPoint.Address}" \', !Ref 'AWS::NoValue' ]
+              - !If [ RedisRequired, !Sub '  -s "${RedisCacheReplicationGroup.PrimaryEndPoint.Port}"', !Ref 'AWS::NoValue' ]
+
+#
+# IAM
+#
+
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref InstanceRole
+
+  InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+
+  InstancePolicyFydeSecrets:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: GetFydeSecrets
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'secretsmanager:DescribeSecret'
+              - 'secretsmanager:GetSecretValue'
+            Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:fyde_*'
+          - Effect: Allow
+            Action:
+              - 'secretsmanager:ListSecrets'
+            Resource: '*'
+      Roles:
+        - !Ref InstanceRole
+
+  InstancePolicyRedis:
+    Type: 'AWS::IAM::Policy'
+    Condition: RedisRequired
+    Properties:
+      PolicyName: DiscoverRedisCluster
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 'elasticache:DescribeCacheClusters'
+            Resource: !Sub 'arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:replicationgroup:${RedisCacheReplicationGroup}'
+      Roles:
+        - !Ref InstanceRole
+
+  InstancePolicyCloudWatchLogsEC2:
+    Type: 'AWS::IAM::Policy'
+    Condition: CloudWatchLogsEnabled
+    Properties:
+      PolicyName: CloudWatchLogsEC2
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: !GetAtt CloudWatchLogsGroupEC2.Arn
+          - Effect: Allow
+            Action:
+              - 'logs:DescribeLogStreams'
+            Resource: '*'
+      Roles:
+        - !Ref InstanceRole
+
+#
+# Redis
+#
+
+  RedisCacheReplicationGroup:
+    Type: 'AWS::ElastiCache::ReplicationGroup'
+    Condition: RedisRequired
+    Properties:
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+      CacheNodeType: cache.t2.micro
+      CacheSubnetGroupName: !Ref RedisCacheSubnetGroup
+      Engine: redis
+      NumCacheClusters: 2
+      Port: 6379
+      ReplicationGroupDescription: Redis for Fyde Access Proxy
+      SecurityGroupIds:
+        - !Ref RedisSecGroup
+      Tags:
+        - Key: Name
+          Value: FydeAccessProxy
+        - Key: Application
+          Value: FydeAccessProxyASG
+
+  RedisCacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Condition: RedisRequired
+    Properties:
+      CacheSubnetGroupName: FydeAccessProxy
+      Description: Redis Subnet Group for Fyde Access Proxy
+      SubnetIds: !Ref RedisSubnets
+
+#
+# CloudWatch Logs
+#
+
+  CloudWatchLogsGroupEC2:
+    Type: AWS::Logs::LogGroup
+    Condition: CloudWatchLogsEnabled
+    Properties:
+      LogGroupName: '/aws/ec2/FydeAccessProxy'
+      RetentionInDays: !Ref CloudWatchLogsRetentionInDays
+
+Outputs:
+
+  NetworkLoadBalancerDnsName:
+    Description: Update the Fyde Access Proxy in the Console with this DNS name
+    Value:
+      !GetAtt NLB.DNSName
+
+  SecurityGroupforResources:
+    Description: Use this group to allow Fyde Access Proxy access to internal resources
+    Value:
+      !Ref ResourceSecGroup

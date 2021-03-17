@@ -1,0 +1,20 @@
+# Docker compose HTTP test
+---
+version: '3.5'
+services:
+
+
+  envoy-proxy:
+    networks:
+      - cga-test
+
+  httptest:
+    container_name: httptest
+    image: fydeinc/http-test:latest
+    networks:
+      - cga-test
+    restart: unless-stopped
+
+networks:
+  cga-test:
+    name: cga-test

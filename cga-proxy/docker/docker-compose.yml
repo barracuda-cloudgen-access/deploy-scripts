@@ -1,0 +1,34 @@
+# Docker compose CloudGen Access Proxy
+---
+version: '3.5'
+services:
+
+  envoy:
+    container_name: envoy
+    depends_on:
+      - orchestrator
+    environment:
+      - FYDE_PROXY_HOST=orchestrator
+      - FYDE_PROXY_PORT=50051
+    image: fydeinc/envoyproxy-centos:latest
+    networks:
+      - cga
+    ports:
+      # Publicly exposed CloudGen Access Proxy port
+      # Host port must match the one defined in CloudGen Enterprise Console
+      - "443:8000"
+    restart: unless-stopped
+
+  orchestrator:
+    container_name: orchestrator
+    environment:
+      # Update with CloudGen Access Proxy enrollment link
+      - FYDE_ENROLLMENT_TOKEN=<paste here your CloudGen Access Proxy enrollment link>
+    image: fydeinc/fydeproxy-centos:latest
+    networks:
+      - cga
+    restart: unless-stopped
+
+networks:
+  cga:
+    name: cga
