@@ -14,6 +14,7 @@ function program_help {
     echo -e "Install CloudGen Access Proxy script
 
 Available parameters:
+  -e \\t\\t- Extra orchestrator environment variables (can be used multiple times)
   -h \\t\\t- Show this help
   -l string \\t- Loglevel (debug, info, warning, error, critical), defaults to info.
   -n \\t\\t- Don't start services after install
@@ -45,9 +46,17 @@ Example for unattended instalation, skipping services start, without CloudGen Ac
 }
 
 # Get parameters
+EXTRA=()
 
-while getopts ":hl:np:r:s:t:uz" OPTION 2>/dev/null; do
+while getopts ":e:hl:np:r:s:t:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in
+        e)
+            VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
+            if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+                VALUE="FYDE_${VALUE}"
+            fi
+            EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
+        ;;
         h)
             program_help
         ;;
@@ -143,10 +152,24 @@ else
         read -r -p "Specify Redis port (6379): " REDIS_PORT
         REDIS_PORT=${REDIS_PORT:-"6379"}
     fi
+
+    if [[ -z "${EXTRA:-}" ]]; then
+        read -r -p "Extra orchestrator environment variables (KEY=VALUE) (Enter an empty line to continue): " KV
+
+        while [[ -n "${KV:-}" ]]; do
+            VALUE="$(echo "${KV}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
+            if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+                VALUE="FYDE_${VALUE}"
+            fi
+            EXTRA+=("${VALUE}=$(echo "${KV}" | cut -d= -f2-)")
+            read -r -p "Extra orchestrator environment variables (KEY=VALUE) (Enter an empty line to continue): " KV
+        done
+    fi
 fi
 
 # Pre-requisites
 
+# shellcheck disable=SC1091
 source /etc/os-release
 
 log_entry "INFO" "Check for package manager lock file"
@@ -259,6 +282,9 @@ fi
 
 mkdir -p /etc/systemd/system/fydeproxy.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+if [[ -n "${EXTRA[*]}" ]]; then
+    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+fi
 chmod 600 /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
 systemctl --system daemon-reload

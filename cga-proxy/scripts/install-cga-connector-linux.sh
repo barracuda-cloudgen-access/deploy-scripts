@@ -117,7 +117,7 @@ else
     fi
 
     if [[ -z "${EXTRA:-}" ]]; then
-        read -r -p "Extra Connector Parameters (Enter an empty line to continue): " KV
+        read -r -p "Extra Connector Parameters (KEY=VALUE) (Enter an empty line to continue): " KV
 
         while [[ -n "${KV:-}" ]]; do
             VALUE="$(echo "${KV}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
@@ -125,13 +125,14 @@ else
                 VALUE="FYDE_${VALUE}"
             fi
             EXTRA+=("${VALUE}=$(echo "${KV}" | cut -d= -f2-)")
-            read -r -p "Extra Connector Parameters (Enter an empty line to continue): " KV
+            read -r -p "Extra Connector Parameters (KEY=VALUE) (Enter an empty line to continue): " KV
         done
     fi
 fi
 
 # Pre-requisites
 
+# shellcheck disable=SC1091
 source /etc/os-release
 
 log_entry "INFO" "Check for package manager lock file"
