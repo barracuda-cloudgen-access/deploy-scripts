@@ -198,7 +198,8 @@ log_entry "INFO" "Configure CloudGen Access Connector"
 UNIT_OVERRIDE=("[Service]" "Environment='FYDE_LOGLEVEL=${LOGLEVEL:-"info"}'")
 UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
 
-if ! [[ "${EXTRA[*]}" == *"AUTH_TOKEN"* ]]; then
+# https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
+if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
     TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
     /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" | tee "${TMPFILE}"
 
@@ -214,15 +215,15 @@ if ! [[ "${EXTRA[*]}" == *"AUTH_TOKEN"* ]]; then
         exit 2
     fi
     rm -f "${TMPFILE}"
-elif [[ "${EXTRA[*]}" == *"OKTA_AUTH_TOKEN"* ]] && ! [[ "${EXTRA[*]}" == *"OKTA_DOMAINNAME"* ]]; then
+elif [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_AUTH_TOKEN"* ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_DOMAINNAME"* ]]; then
     log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
     exit 2
 fi
 
 mkdir -p /etc/systemd/system/fyde-connector.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fyde-connector.service.d/10-environment.conf
-if [[ -n "${EXTRA[*]}" ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
+if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
+    printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 

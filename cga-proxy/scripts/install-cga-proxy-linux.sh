@@ -282,8 +282,10 @@ fi
 
 mkdir -p /etc/systemd/system/fydeproxy.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fydeproxy.service.d/10-environment.conf
-if [[ -n "${EXTRA[*]}" ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+
+# https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
+if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
+    printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
