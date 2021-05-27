@@ -1,4 +1,12 @@
-# Deployment scripts for CloudGen Access
+# Barracuda CloudGen Access - Deployment scripts
+
+![Barracuda CloudGen Access](./misc/cga-logo.png)
+
+Deployment scripts for CloudGen Access resources
+
+Visit the [Website](https://www.barracuda.com/products/cloudgen-access)
+
+Check the [Product Documentation](https://campus.barracuda.com/product/cloudgenaccess/doc/93201218/overview/)
 
 ## Actions
 
