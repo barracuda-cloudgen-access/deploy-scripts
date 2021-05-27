@@ -1,0 +1,5 @@
+easy-rsa
+*.pem
+*.key
+*.crt
+*.ovpn
