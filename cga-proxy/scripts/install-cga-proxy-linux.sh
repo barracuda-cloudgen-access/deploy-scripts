@@ -222,6 +222,10 @@ elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
     yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
 fi
 
+# Set Journald configuration
+echo "RateLimitBurst=10000" >> /etc/systemd/journald.conf
+systemctl restart systemd-journald.service
+
 # CloudGen Envoy Proxy
 
 log_entry "INFO" "Install Envoy Proxy"
