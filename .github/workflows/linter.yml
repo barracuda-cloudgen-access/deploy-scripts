@@ -27,5 +27,3 @@ jobs:
           VALIDATE_ALL_CODEBASE: false
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # BNCGA-599 - Enable linting and tests
-          VALIDATE_CLOUDFORMATION: false

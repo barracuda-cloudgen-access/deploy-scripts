@@ -222,6 +222,10 @@ elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
     yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
 fi
 
+# Set Journald configuration
+echo "RateLimitBurst=10000" >> /etc/systemd/journald.conf
+systemctl restart systemd-journald.service
+
 # CloudGen Envoy Proxy
 
 log_entry "INFO" "Install Envoy Proxy"
@@ -284,6 +288,7 @@ mkdir -p /etc/systemd/system/fydeproxy.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
 # https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
+# shellcheck disable=SC2199
 if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
     printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 fi

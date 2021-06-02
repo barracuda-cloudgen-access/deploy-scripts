@@ -12,6 +12,14 @@ Check the [Product Documentation](https://campus.barracuda.com/product/cloudgena
 
 - Lint: `make lint`
 
+## Links
+
+- More deploy options:
+  - [Azure Templates](https://github.com/barracuda-cloudgen-access/azure-templates)
+  - [AWS Templates](https://github.com/barracuda-cloudgen-access/aws-templates)
+  - [Helm Charts](https://github.com/barracuda-cloudgen-access/helm-charts)
+  - [Terraform Modules](https://github.com/barracuda-cloudgen-access/terraform-modules)
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0), a OSI-approved license.
