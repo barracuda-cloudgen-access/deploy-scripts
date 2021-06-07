@@ -79,6 +79,7 @@ fi
 
 # Pre-requisites
 
+# shellcheck disable=SC1091
 source /etc/os-release
 
 log_entry "INFO" "Check for package manager lock file"
@@ -104,9 +105,16 @@ if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
     apt install -y unattended-upgrades software-properties-common python3-pip
     apt-add-repository --yes --update ppa:ansible/ansible
     apt install -y ansible
+elif [[ "${ID:-}" == "amzn" ]]; then
+    amazon-linux-extras install epel -y
+    yum install -y open-vm-tools yum-cron ansible
+    UPDATE_FILE="/etc/yum/yum-cron.conf"
+    UPDATE_SVC="yum-cron"
 else
     dnf install -y yum-utils epel-release
     dnf install -y open-vm-tools dnf-automatic ansible
+    UPDATE_FILE="/etc/dnf/automatic.conf"
+    UPDATE_SVC="dnf-automatic.timer"
 fi
 
 # Hardening
@@ -143,8 +151,7 @@ EOF
         "${ANSIBLE_TMP}"/playbook.yml
     rm -rf "${ANSIBLE_TMP}"
 else
-    # Configure dnf-automatic (old yum-cron)
-    tee "/etc/dnf/automatic.conf" <<EOF
+    tee "${UPDATE_FILE}" <<EOF
 [commands]
 update_cmd = security
 update_messages = yes
@@ -162,7 +169,7 @@ debuglevel = -2
 mdpolicy = group:main
 exclude = kernel*
 EOF
-    systemctl enable --now dnf-automatic.timer
+    systemctl enable --now "${UPDATE_SVC}"
 
     ansible-playbook -i "localhost," \
         --connection=local --become \
