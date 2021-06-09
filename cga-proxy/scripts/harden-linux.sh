@@ -143,6 +143,9 @@ EOF
     tee -a "/etc/apt/apt.conf.d/50unattended-upgrades" <<EOF
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Origins-Pattern {
+        "site=downloads.fyde.com,component=main";
+};
 EOF
 
     ansible-playbook -i "localhost," \
