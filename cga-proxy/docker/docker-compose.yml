@@ -24,7 +24,7 @@ services:
     environment:
       # Update with CloudGen Access Proxy enrollment link
       - FYDE_ENROLLMENT_TOKEN=<paste here your CloudGen Access Proxy enrollment link>
-    image: fydeinc/fydeproxy-centos:latest
+    image: fydeinc/fydeproxy:latest
     networks:
       - cga
     restart: unless-stopped
