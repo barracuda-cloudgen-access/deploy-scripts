@@ -201,6 +201,7 @@ UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
 
 if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
     # https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
+    # shellcheck disable=SC2199
     if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
         TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
         /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" | tee "${TMPFILE}"
@@ -225,6 +226,7 @@ fi
 
 mkdir -p /etc/systemd/system/fyde-connector.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fyde-connector.service.d/10-environment.conf
+# shellcheck disable=SC2199
 if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
     printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 fi
