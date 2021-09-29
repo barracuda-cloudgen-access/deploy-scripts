@@ -99,6 +99,7 @@ fi
 if [[ "${UNATTENDED_INSTALL:-}" == "true" ]] || ! [[ -t 0 ]]; then
     if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
         log_entry "INFO" "Connector Token not found on command line, make sure you provide it some other way"
+        CONNECTOR_TOKEN="<UNATTENDED_INSTALL>"
     fi
 else
     if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
@@ -198,26 +199,28 @@ log_entry "INFO" "Configure CloudGen Access Connector"
 UNIT_OVERRIDE=("[Service]" "Environment='FYDE_LOGLEVEL=${LOGLEVEL:-"info"}'")
 UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
 
-# https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
-if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
-    TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
-    /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" | tee "${TMPFILE}"
+if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
+    # https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
+    if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
+        TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
+        /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" | tee "${TMPFILE}"
 
-    if grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
-        AZURE_AUTH_TOKEN=$(grep -E -o 'Your Azure Authentication token is:.+' "$TMPFILE" | cut -d: -f2-)
-        UNIT_OVERRIDE+=("Environment='FYDE_AZURE_AUTH_TOKEN=${AZURE_AUTH_TOKEN}'")
-    elif grep -q 'Your Google Suite token is:' "${TMPFILE}"; then
-        GOOGLE_AUTH_TOKEN=$(grep -E -o 'Your Google Suite token is:.+' "${TMPFILE}" | cut -d: -f2-)
-        UNIT_OVERRIDE+=("Environment='FYDE_GOOGLE_AUTH_TOKEN=${GOOGLE_AUTH_TOKEN}'")
-    elif grep -iq 'okta-auth-token and okta-domainname variables are both mandatory' "${TMPFILE}"; then
-        log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
+        if grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
+            AZURE_AUTH_TOKEN=$(grep -E -o 'Your Azure Authentication token is:.+' "$TMPFILE" | cut -d: -f2-)
+            UNIT_OVERRIDE+=("Environment='FYDE_AZURE_AUTH_TOKEN=${AZURE_AUTH_TOKEN}'")
+        elif grep -q 'Your Google Suite token is:' "${TMPFILE}"; then
+            GOOGLE_AUTH_TOKEN=$(grep -E -o 'Your Google Suite token is:.+' "${TMPFILE}" | cut -d: -f2-)
+            UNIT_OVERRIDE+=("Environment='FYDE_GOOGLE_AUTH_TOKEN=${GOOGLE_AUTH_TOKEN}'")
+        elif grep -iq 'okta-auth-token and okta-domainname variables are both mandatory' "${TMPFILE}"; then
+            log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
+            rm -f "${TMPFILE}"
+            exit 2
+        fi
         rm -f "${TMPFILE}"
+    elif [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_AUTH_TOKEN"* ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_DOMAINNAME"* ]]; then
+        log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
         exit 2
     fi
-    rm -f "${TMPFILE}"
-elif [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_AUTH_TOKEN"* ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_DOMAINNAME"* ]]; then
-    log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
-    exit 2
 fi
 
 mkdir -p /etc/systemd/system/fyde-connector.service.d
