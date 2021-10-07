@@ -1,0 +1,42 @@
+---
+name: Ansible
+
+on:
+  pull_request:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  install-ansible:
+    name: Install Ansible
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        container:
+          - amazonlinux:2
+          - centos:7
+          - centos:8
+          - quay.io/centos/centos:stream8
+          - debian:9
+          - debian:10
+          - debian:11
+          - ubuntu:18.04
+          - ubuntu:20.04
+      fail-fast: false
+    container:
+      image: ${{ matrix.container }}
+    steps:
+
+      - name: Setup amazonlinux:2
+        if: matrix.container == 'amazonlinux:2'
+        run: yum install -y git tar
+
+      - name: Checkout
+        uses: actions/checkout@v2.3.4
+
+      - name: Install
+        run: |
+          ./shared/scripts/install-ansible.sh
