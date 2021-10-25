@@ -35,7 +35,7 @@ jobs:
         run: yum install -y git tar
 
       - name: Checkout
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v2.3.5
 
       - name: Install
         run: |
