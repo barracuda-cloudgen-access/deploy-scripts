@@ -99,7 +99,6 @@ fi
 if [[ "${UNATTENDED_INSTALL:-}" == "true" ]] || ! [[ -t 0 ]]; then
     if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
         log_entry "INFO" "Connector Token not found on command line, make sure you provide it some other way"
-        CONNECTOR_TOKEN="<UNATTENDED_INSTALL>"
     fi
 else
     if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
@@ -197,9 +196,9 @@ systemctl enable fyde-connector
 log_entry "INFO" "Configure CloudGen Access Connector"
 
 UNIT_OVERRIDE=("[Service]" "Environment='FYDE_LOGLEVEL=${LOGLEVEL:-"info"}'")
-UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
 
 if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
+    UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
     # https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
     # shellcheck disable=SC2199
     if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
