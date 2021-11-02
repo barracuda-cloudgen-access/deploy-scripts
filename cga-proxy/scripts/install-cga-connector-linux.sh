@@ -105,7 +105,7 @@ else
         log_entry "INFO" "Please provide required variables"
 
         while [[ -z "${CONNECTOR_TOKEN:-}" ]]; do
-            read -r -p "Paste the CloudGen Access Connector enrollment token here (hidden): " -s CONNECTOR_TOKEN
+            read -r -p "Paste the CloudGen Access Connector enrollment token: " CONNECTOR_TOKEN
             echo ""
             if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
                 log_entry "ERROR" "CloudGen Access Connector enrollment token cannot be empty"

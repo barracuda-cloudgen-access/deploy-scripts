@@ -137,7 +137,7 @@ else
     PUBLIC_PORT=${PUBLIC_PORT:-"443"}
 
     while [[ -z "${PROXY_TOKEN:-}" ]]; do
-        read -r -p "Paste the CloudGen Access Proxy enrollment link (hidden): " -s PROXY_TOKEN
+        read -r -p "Paste the CloudGen Access Proxy enrollment token: " PROXY_TOKEN
         echo ""
         if [[ -z "${PROXY_TOKEN:-}" ]]; then
             log_entry "ERROR" "CloudGen Access Proxy enrollment link cannot be empty"
