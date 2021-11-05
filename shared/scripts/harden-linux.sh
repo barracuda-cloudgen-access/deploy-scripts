@@ -25,6 +25,12 @@ Available parameters:
 
 }
 
+# Variables
+ANSIBLE_OPTIONS=("--connection=local" "--become")
+SSH_MAX_AUTH_RETRIES="2"
+SSH_PERMIT_ROOT_LOGIN="no"
+SSH_SERVER_PASSWORD_LOGIN="true"
+
 # Functions
 function log_entry() {
     local LOG_TYPE="${1:?Needs log type}"
@@ -44,10 +50,6 @@ if [[ "${EUID}" != "0" ]]; then
 fi
 
 # Get parameters
-SSH_MAX_AUTH_RETRIES="2"
-SSH_PERMIT_ROOT_LOGIN="no"
-SSH_SERVER_PASSWORD_LOGIN="true"
-
 while getopts ":hp:ur:s:" OPTION 2>/dev/null; do
     case "${OPTION}" in
         h)
@@ -115,23 +117,65 @@ curl -fsSLo "${TMP_DIR}/install-ansible.sh" https://url.fyde.me/ansible
 chmod +x "${TMP_DIR}/install-ansible.sh"
 "${TMP_DIR}/install-ansible.sh"
 
-# Install unattended-upgrades/yum-cron
+# unattended-upgrades/yum-cron
+log_entry "INFO" "Configure automatic updates"
+
 if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     apt-get update
-    apt-get install -y unattended-upgrades software-properties-common python3-pip
+    apt-get install -y \
+        ca-certificates \
+        unattended-upgrades \
+        software-properties-common \
+        python3-pip
+    ANSIBLE_OPTIONS+=("-e" "ansible_python_interpreter=/usr/bin/python3")
 elif [[ "${ID:-}" == "amzn" ]]; then
     amazon-linux-extras install epel -y
     yum install -y yum-cron
     UPDATE_FILE="/etc/yum/yum-cron.conf"
     UPDATE_SVC="yum-cron"
 else
-    dnf install -y yum-utils epel-release
-    dnf install -y dnf-automatic
+    COMMAND=(yum)
+    if command -v dnf &> /dev/null; then
+        COMMAND=(dnf)
+    fi
+    "${COMMAND[@]}" install -y yum-utils epel-release
+    "${COMMAND[@]}" install -y dnf-automatic
+    rpm --import /etc/pki/rpm-gpg/*GPG*
     UPDATE_FILE="/etc/dnf/automatic.conf"
     UPDATE_SVC="dnf-automatic.timer"
 fi
 
-# Hardening
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
+    tee "/etc/apt/apt.conf.d/20auto-upgrades" <<EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOF
+    tee -a "/etc/apt/apt.conf.d/50unattended-upgrades" <<EOF
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Origins-Pattern {
+        "site=downloads.fyde.com,component=main";
+};
+EOF
+else
+    tee "${UPDATE_FILE}" <<EOF
+[commands]
+upgrade_type = default
+random_sleep = 3600
+network_online_timeout = 60
+download_updates = yes
+apply_updates = yes
+emit_via = stdio
+[email]
+email_from = root@example.com
+[base]
+debuglevel = 1
+EOF
+    systemctl enable --now "${UPDATE_SVC}"
+fi
+
+# Ansible
 log_entry "INFO" "Run Ansible playbooks"
 ansible-galaxy collection install devsec.hardening
 tee "${TMP_DIR}"/playbook.yml <<EOF
@@ -149,48 +193,9 @@ tee "${TMP_DIR}"/playbook.yml <<EOF
     sshd_authenticationmethods: "publickey password"
 EOF
 
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
-    tee "/etc/apt/apt.conf.d/20auto-upgrades" <<EOF
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-EOF
-    tee -a "/etc/apt/apt.conf.d/50unattended-upgrades" <<EOF
-Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
-Unattended-Upgrade::Remove-Unused-Dependencies "true";
-Unattended-Upgrade::Origins-Pattern {
-        "site=downloads.fyde.com,component=main";
-};
-EOF
-
-    ansible-playbook -i "localhost," \
-        --connection=local --become \
-        -e 'ansible_python_interpreter=/usr/bin/python3' \
-        "${TMP_DIR}"/playbook.yml
-else
-    tee "${UPDATE_FILE}" <<EOF
-[commands]
-update_cmd = security
-update_messages = yes
-download_updates = yes
-apply_updates = yes
-random_sleep = 360
-[emitters]
-system_name = None
-emit_via = stdio
-output_width = 80
-[email]
-email_from = root@localhost
-[base]
-debuglevel = -2
-mdpolicy = group:main
-exclude = kernel*
-EOF
-    systemctl enable --now "${UPDATE_SVC}"
-
-    ansible-playbook -i "localhost," \
-        --connection=local --become \
-        "${TMP_DIR}"/playbook.yml
-fi
+ansible-playbook -i "localhost," \
+    --connection=local --become \
+    "${ANSIBLE_OPTIONS[@]}" \
+    "${TMP_DIR}"/playbook.yml
 
 log_entry "INFO" "Please REBOOT your instance before continuing"
