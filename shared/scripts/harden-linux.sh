@@ -145,7 +145,7 @@ else
     UPDATE_SVC="dnf-automatic.timer"
 fi
 
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     tee "/etc/apt/apt.conf.d/20auto-upgrades" <<EOF
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
