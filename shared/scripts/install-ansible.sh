@@ -19,7 +19,7 @@ function log_entry() {
     echo -e "${COLOR}$(date "+%Y-%m-%d %H:%M:%S") [$LOG_TYPE] ${LOG_MSG}${ENDCOLOR}"
 }
 
-# Check root
+# Check for root
 
 if [[ "${EUID}" != "0" ]]; then
     log_entry "ERROR" "This script needs to be run as root"

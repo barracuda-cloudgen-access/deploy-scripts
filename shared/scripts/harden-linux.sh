@@ -16,29 +16,61 @@ function program_help {
 
 Available parameters:
   -h \\t\\t- Show this help
-  -u \\t\\t- Unattended install, skip requesting input <optional>
-  -r \\t\\t- Allow login as root (Default: false)
+  -p \\t\\t- Allow password-based authentication with the ssh server (true/false) (Default: true)
+  -r \\t\\t- Allow ssh login as root (no/without-password/yes) (Default: no)
+  -s \\t\\t- Maximum number of ssh authentication attempts permitted per connection (Default: 2)
+  -u \\t\\t- Unattended install, skip requesting input (optional)
 "
     exit 0
 
 }
 
-# Get parameters
+# Functions
+function log_entry() {
+    local LOG_TYPE="${1:?Needs log type}"
+    local LOG_MSG="${2:?Needs log message}"
+    local COLOR='\033[93m'
+    local ENDCOLOR='\033[0m'
 
-ALLOW_ROOT='no'
-while getopts ":hru" OPTION 2>/dev/null; do
+    echo -e "${COLOR}$(date "+%Y-%m-%d %H:%M:%S") [$LOG_TYPE] ${LOG_MSG}${ENDCOLOR}"
+}
+
+# Check for root
+if [[ "${EUID}" != "0" ]]; then
+    log_entry "ERROR" "This script needs to be run as root"
+    echo -e "whoami\t: $(whoami)"
+    echo -e "id\t: $(id)"
+    exit 1
+fi
+
+# Get parameters
+SSH_MAX_AUTH_RETRIES="2"
+SSH_PERMIT_ROOT_LOGIN="no"
+SSH_SERVER_PASSWORD_LOGIN="true"
+
+while getopts ":hp:ur:s:" OPTION 2>/dev/null; do
     case "${OPTION}" in
         h)
             program_help
         ;;
+        p)
+            SSH_SERVER_PASSWORD_LOGIN="${OPTARG}"
+        ;;
+        r)
+            SSH_PERMIT_ROOT_LOGIN="${OPTARG}"
+        ;;
+        s)
+            SSH_MAX_AUTH_RETRIES="${OPTARG}"
+        ;;
         u)
             UNATTENDED_INSTALL="true"
         ;;
-        r)
-            ALLOW_ROOT='yes'
-        ;;
         \?)
             echo "Invalid option: -${OPTARG}"
+            exit 3
+        ;;
+        :)
+            echo "Option -${OPTARG} requires an argument." >&2
             exit 3
         ;;
         *)
@@ -48,90 +80,73 @@ while getopts ":hru" OPTION 2>/dev/null; do
     esac
 done
 
-# Functions
+# Always clear tmp dir
+TMP_DIR="$(mktemp -d)"
+function clear_tmp() {
+    local CLEAR_PATH="${1:?"Needs path to remove"}"
+    local COUNT
 
-function log_entry() {
-
-    local LOG_TYPE="${1:?Needs log type}"
-    local LOG_MSG="${2:?Needs log message}"
-    local COLOR='\033[93m'
-    local ENDCOLOR='\033[0m'
-
-    echo -e "${COLOR}$(date "+%Y-%m-%d %H:%M:%S") [$LOG_TYPE] ${LOG_MSG}${ENDCOLOR}"
-
+    log_entry "INFO" "Clearing temporary folder(s)"
+    COUNT="$(rm -rfv "${CLEAR_PATH}" | wc -l)"
+    log_entry "INFO" "Removed ${COUNT} items"
 }
-
-# Check if run as root
-
-if [[ "$EUID" != "0" ]]; then
-    log_entry "ERROR" "This script needs to be run as root"
-    exit 1
-fi
+trap 'clear_tmp ${TMP_DIR:?}' EXIT
 
 # Prepare inputs
-
 if [[ "${UNATTENDED_INSTALL:-}" != "true" ]] && [[ -t 0 ]]; then
     log_entry "INFO" "Please provide required variables"
 
-    read -r -p "Do you want to allow SSH as root user? (no): " ALLOW_ROOT
-    ALLOW_ROOT=${ALLOW_ROOT:-"no"}
-fi
+    BOLD=$(tput bold)
+    NORMAL=$(tput sgr0)
 
-# Pre-requisites
+    read -r -p "Allow password-based authentication with the ssh server (${BOLD}true${NORMAL}/false): " READ_SSH_SERVER_PASSWORD_LOGIN
+    SSH_SERVER_PASSWORD_LOGIN="${READ_SSH_SERVER_PASSWORD_LOGIN:-"${SSH_SERVER_PASSWORD_LOGIN}"}"
+    read -r -p "Allow ssh login as root (${BOLD}no${NORMAL}/without-password/yes): " READ_SSH_PERMIT_ROOT_LOGIN
+    SSH_PERMIT_ROOT_LOGIN="${READ_SSH_PERMIT_ROOT_LOGIN:-"${SSH_PERMIT_ROOT_LOGIN}"}"
+    read -r -p "Maximum number of ssh authentication attempts permitted per connection (${BOLD}2${NORMAL}): " READ_SSH_MAX_AUTH_RETRIES
+    SSH_MAX_AUTH_RETRIES="${READ_SSH_MAX_AUTH_RETRIES:-"${SSH_MAX_AUTH_RETRIES}"}"
+fi
 
 # shellcheck disable=SC1091
 source /etc/os-release
 
-log_entry "INFO" "Check for package manager lock file"
-for i in $(seq 1 300); do
-    if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
-        if ! fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock >/dev/null 2>&1; then
-            break
-        fi
-    elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
-        if ! [ -f /var/run/yum.pid ]; then
-            break
-        fi
-    else
-        echo "Unrecognized distribution type: ${ID_LIKE}"
-        exit 4
-    fi
-    echo "Lock found. Check ${i}/300"
-    sleep 1
-done
+# Install ansible
+curl -fsSLo "${TMP_DIR}/install-ansible.sh" https://url.fyde.me/ansible
+chmod +x "${TMP_DIR}/install-ansible.sh"
+"${TMP_DIR}/install-ansible.sh"
 
-log_entry "INFO" "Install pre-requisites"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
-    apt install -y unattended-upgrades software-properties-common python3-pip
-    apt-add-repository --yes --update ppa:ansible/ansible
-    apt install -y ansible
+# Install unattended-upgrades/yum-cron
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
+    apt-get update
+    apt-get install -y unattended-upgrades software-properties-common python3-pip
 elif [[ "${ID:-}" == "amzn" ]]; then
     amazon-linux-extras install epel -y
-    yum install -y open-vm-tools yum-cron ansible
+    yum install -y yum-cron
     UPDATE_FILE="/etc/yum/yum-cron.conf"
     UPDATE_SVC="yum-cron"
 else
     dnf install -y yum-utils epel-release
-    dnf install -y open-vm-tools dnf-automatic ansible
+    dnf install -y dnf-automatic
     UPDATE_FILE="/etc/dnf/automatic.conf"
     UPDATE_SVC="dnf-automatic.timer"
 fi
 
 # Hardening
 log_entry "INFO" "Run Ansible playbooks"
-ANSIBLE_TMP="$(mktemp -d)"
-ansible-galaxy install dev-sec.os-hardening dev-sec.ssh-hardening \
-    -p "${ANSIBLE_TMP}"
-tee "${ANSIBLE_TMP}"/playbook.yml <<EOF
+ansible-galaxy collection install devsec.hardening
+tee "${TMP_DIR}"/playbook.yml <<EOF
 ---
 - hosts: localhost
+  collections:
+    - devsec.hardening
   roles:
-    - dev-sec.ssh-hardening
-    - dev-sec.os-hardening
+    - ssh_hardening
+    - os_hardening
   vars:
-    ssh_permit_root_login: '${ALLOW_ROOT:-"no"}'
-    ssh_server_password_login: true
-    sshd_authenticationmethods: 'publickey password'
+    ssh_max_auth_retries: "${SSH_MAX_AUTH_RETRIES}"
+    ssh_permit_root_login: "${SSH_PERMIT_ROOT_LOGIN}"
+    ssh_server_password_login: ${SSH_SERVER_PASSWORD_LOGIN}
+    sshd_authenticationmethods: "publickey password"
 EOF
 
 if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
@@ -151,8 +166,7 @@ EOF
     ansible-playbook -i "localhost," \
         --connection=local --become \
         -e 'ansible_python_interpreter=/usr/bin/python3' \
-        "${ANSIBLE_TMP}"/playbook.yml
-    rm -rf "${ANSIBLE_TMP}"
+        "${TMP_DIR}"/playbook.yml
 else
     tee "${UPDATE_FILE}" <<EOF
 [commands]
@@ -176,8 +190,7 @@ EOF
 
     ansible-playbook -i "localhost," \
         --connection=local --become \
-        "${ANSIBLE_TMP}"/playbook.yml
-    rm -rf "${ANSIBLE_TMP}"
+        "${TMP_DIR}"/playbook.yml
 fi
 
 log_entry "INFO" "Please REBOOT your instance before continuing"
