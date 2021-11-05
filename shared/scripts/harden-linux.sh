@@ -117,7 +117,9 @@ curl -fsSLo "${TMP_DIR}/install-ansible.sh" https://url.fyde.me/ansible
 chmod +x "${TMP_DIR}/install-ansible.sh"
 "${TMP_DIR}/install-ansible.sh"
 
-# Install unattended-upgrades/yum-cron
+# unattended-upgrades/yum-cron
+log_entry "INFO" "Configure automatic updates"
+
 if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     apt-get update
     apt-get install -y \
@@ -132,8 +134,13 @@ elif [[ "${ID:-}" == "amzn" ]]; then
     UPDATE_FILE="/etc/yum/yum-cron.conf"
     UPDATE_SVC="yum-cron"
 else
-    dnf install -y yum-utils epel-release
-    dnf install -y dnf-automatic
+    COMMAND=(yum)
+    if command -v dnf &> /dev/null; then
+        COMMAND=(dnf)
+    fi
+    "${COMMAND[@]}" install -y yum-utils epel-release
+    "${COMMAND[@]}" install -y dnf-automatic
+    rpm --import /etc/pki/rpm-gpg/*GPG*
     UPDATE_FILE="/etc/dnf/automatic.conf"
     UPDATE_SVC="dnf-automatic.timer"
 fi
