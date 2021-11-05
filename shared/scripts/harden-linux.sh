@@ -161,21 +161,16 @@ EOF
 else
     tee "${UPDATE_FILE}" <<EOF
 [commands]
-update_cmd = security
-update_messages = yes
+upgrade_type = default
+random_sleep = 3600
+network_online_timeout = 60
 download_updates = yes
 apply_updates = yes
-random_sleep = 360
-[emitters]
-system_name = None
 emit_via = stdio
-output_width = 80
 [email]
-email_from = root@localhost
+email_from = root@example.com
 [base]
-debuglevel = -2
-mdpolicy = group:main
-exclude = kernel*
+debuglevel = 1
 EOF
     systemctl enable --now "${UPDATE_SVC}"
 fi
