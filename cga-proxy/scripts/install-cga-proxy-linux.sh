@@ -174,11 +174,11 @@ source /etc/os-release
 
 log_entry "INFO" "Check for package manager lock file"
 for i in $(seq 1 300); do
-    if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+    if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
         if ! fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock >/dev/null 2>&1; then
             break
         fi
-    elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+    elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
         if ! [ -f /var/run/yum.pid ]; then
             break
         fi
@@ -191,14 +191,14 @@ for i in $(seq 1 300); do
 done
 
 log_entry "INFO" "Install pre-requisites"
-if [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+if [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum -y install yum-utils
 fi
 
 if [[ "${SKIP_NTP:-}" == "true" ]]; then
     log_entry "INFO" "Skipping NTP configuration"
 else
-    if [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+    if [[ "${ID_LIKE:-}" =~ rhel ]]; then
         log_entry "INFO" "Ensure chrony daemon is enabled on system boot and started"
         yum -y install chrony
         systemctl enable chronyd
@@ -211,14 +211,14 @@ else
 fi
 
 log_entry "INFO" "Add CloudGen repository"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     REPO_URL="downloads.fyde.com"
-    wget -q -O - "https://$REPO_URL/fyde-public-key.asc" | apt-key add -
+    wget -q -O - "https://${REPO_URL}/fyde-public-key.asc" | apt-key add -
     bash -c "cat > /etc/apt/sources.list.d/fyde.list <<EOF
-deb https://$REPO_URL/apt stable main
+deb https://${REPO_URL}/apt stable main
 EOF"
     sudo apt update
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
 fi
 
@@ -229,9 +229,9 @@ systemctl restart systemd-journald.service
 # CloudGen Envoy Proxy
 
 log_entry "INFO" "Install Envoy Proxy"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     apt -y install envoy
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum -y install envoy
 fi
 systemctl enable envoy
@@ -261,9 +261,9 @@ fi
 # CloudGen Proxy Orchestrator
 
 log_entry "INFO" "Install CloudGen Proxy Orchestrator"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     apt -y install fydeproxy
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum -y install fydeproxy
 fi
 systemctl enable fydeproxy
@@ -287,31 +287,20 @@ fi
 mkdir -p /etc/systemd/system/fydeproxy.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
-# https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
-# shellcheck disable=SC2199
-if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+if [[ "${#EXTRA[@]}" -gt 0 ]]; then
+    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
-systemctl --system daemon-reload
-
-if [[ "${NO_START_SVC:-}" == "true" ]]; then
-    log_entry "INFO" "Skip CloudGen Proxy Orchestrator start"
-else
-    log_entry "INFO" "Ensure CloudGen Proxy Orchestrator daemon is running with latest config"
-    systemctl restart fydeproxy
-fi
-
 log_entry "INFO" "Configure the firewall"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     if systemctl status ufw &> /dev/null; then
         ufw allow "${PUBLIC_PORT}/tcp"
         ufw reload
     else
         log_entry "WARNING" "UFW not started, skipping configuration"
     fi
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     if systemctl status firewalld &> /dev/null; then
         firewall-cmd --zone=public --add-port="${PUBLIC_PORT}/tcp" --permanent
         firewall-cmd --reload
@@ -320,14 +309,20 @@ elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
     fi
 fi
 
-log_entry "INFO" "Check logs:"
-echo "journalctl -u envoy -f"
-echo "journalctl -u fydeproxy -f"
+systemctl --system daemon-reload
 
-if [[ "${NO_START_SVC:-}" == true ]]; then
+if [[ "${NO_START_SVC:-}" == "true" ]]; then
+    log_entry "INFO" "Skip CloudGen Proxy Orchestrator start"
     log_entry "INFO" "Start services:"
     echo "systemctl start envoy"
     echo "systemctl start fydeproxy"
+else
+    log_entry "INFO" "Ensure CloudGen Proxy Orchestrator daemon is running with latest config"
+    systemctl restart fydeproxy
 fi
+
+log_entry "INFO" "Check logs:"
+echo "journalctl -u envoy -f"
+echo "journalctl -u fydeproxy -f"
 
 log_entry "INFO" "Complete."
