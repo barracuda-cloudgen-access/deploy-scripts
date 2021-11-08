@@ -234,10 +234,10 @@ chmod 600 /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 systemctl --system daemon-reload
 
 if [[ "${NO_START_SVC:-}" == "true" ]]; then
-    log_entry "INFO" "Skip CloudGen Access Connector start"
+    log_entry "INFO" "Skip CloudGen Access Connector daemon start"
 else
-    log_entry "INFO" "Start CloudGen Access Connector daemon"
-    systemctl start fyde-connector
+    log_entry "INFO" "Ensure CloudGen Access Connector daemon is running with latest config"
+    systemctl restart fyde-connector
 fi
 
 log_entry "INFO" "To check logs:"
