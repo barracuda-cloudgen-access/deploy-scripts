@@ -2,15 +2,12 @@
 #
 # Copyright (c) 2020-present, Barracuda Networks Inc.
 #
-
 # Set error handling
 
 set -euo pipefail
 
 # Set help
-
 function program_help {
-
     echo -e "Install CloudGen Access User Directory Connector script
 
 Available parameters:
@@ -23,7 +20,6 @@ Available parameters:
   -z \\t\\t- Skip configuring ntp server <optional>
 "
     exit 0
-
 }
 
 # Get parameters
@@ -75,27 +71,31 @@ while getopts ":e:hl:nt:uz" OPTION 2>/dev/null; do
 done
 
 # Functions
-
 function log_entry() {
-
     local LOG_TYPE="${1:?Needs log type}"
     local LOG_MSG="${2:?Needs log message}"
     local COLOR='\033[93m'
     local ENDCOLOR='\033[0m'
 
     echo -e "${COLOR}$(date "+%Y-%m-%d %H:%M:%S") [$LOG_TYPE] ${LOG_MSG}${ENDCOLOR}"
+}
 
+function clear_tmp() {
+    local CLEAR_PATH="${1:?"Needs path to remove"}"
+    local COUNT
+
+    log_entry "INFO" "Clearing temporary folder(s)"
+    COUNT="$(rm -rfv "${CLEAR_PATH}" | wc -l)"
+    log_entry "INFO" "Removed ${COUNT} item(s)"
 }
 
 # Check if run as root
-
 if [[ "${EUID}" != "0" ]]; then
     log_entry "ERROR" "This script needs to be run as root"
     exit 1
 fi
 
 # Prepare inputs
-
 if [[ "${UNATTENDED_INSTALL:-}" == "true" ]] || ! [[ -t 0 ]]; then
     if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
         log_entry "INFO" "Connector Token not found on command line, make sure you provide it some other way"
@@ -137,11 +137,11 @@ source /etc/os-release
 
 log_entry "INFO" "Check for package manager lock file"
 for i in $(seq 1 300); do
-    if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+    if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
         if ! fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock >/dev/null 2>&1; then
             break
         fi
-    elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+    elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
         if ! [ -f /var/run/yum.pid ]; then
             break
         fi
@@ -153,7 +153,7 @@ for i in $(seq 1 300); do
     sleep 1
 done
 
-if [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+if [[ "${ID_LIKE:-}" =~ rhel ]]; then
     log_entry "INFO" "Install pre-requisites"
     yum -y install yum-utils
 fi
@@ -161,7 +161,7 @@ fi
 if [[ "${SKIP_NTP:-}" == "true" ]]; then
     log_entry "INFO" "Skipping NTP configuration"
 else
-    if [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+    if [[ "${ID_LIKE:-}" =~ rhel ]]; then
         log_entry "INFO" "Ensure chrony daemon is enabled on system boot and started"
         yum -y install chrony
         systemctl enable chronyd
@@ -174,21 +174,21 @@ else
 fi
 
 log_entry "INFO" "Add Fyde repository"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     REPO_URL="downloads.fyde.com"
     wget -q -O - "https://${REPO_URL}/fyde-public-key.asc" | apt-key add -
     bash -c "cat > /etc/apt/sources.list.d/fyde.list <<EOF
 deb https://${REPO_URL}/apt stable main
 EOF"
     sudo apt update
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
 fi
 
 log_entry "INFO" "Install CloudGen Access Connector"
-if [[ "${ID_LIKE:-}" == *"debian"* ]]; then
+if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
     apt -y install fyde-connector
-elif [[ "${ID_LIKE:-}" == *"rhel"* ]]; then
+elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum -y install fyde-connector
 fi
 systemctl enable fyde-connector
@@ -199,25 +199,38 @@ UNIT_OVERRIDE=("[Service]" "Environment='FYDE_LOGLEVEL=${LOGLEVEL:-"info"}'")
 
 if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
     UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
-    # https://stackoverflow.com/questions/7577052/bash-empty-array-expansion-with-set-u
-    # shellcheck disable=SC2199
-    if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"AUTH_TOKEN"* ]]; then
-        TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
-        /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" | tee "${TMPFILE}"
 
-        if grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
-            AZURE_AUTH_TOKEN=$(grep -E -o 'Your Azure Authentication token is:.+' "$TMPFILE" | cut -d: -f2-)
-            UNIT_OVERRIDE+=("Environment='FYDE_AZURE_AUTH_TOKEN=${AZURE_AUTH_TOKEN}'")
-        elif grep -q 'Your Google Suite token is:' "${TMPFILE}"; then
-            GOOGLE_AUTH_TOKEN=$(grep -E -o 'Your Google Suite token is:.+' "${TMPFILE}" | cut -d: -f2-)
-            UNIT_OVERRIDE+=("Environment='FYDE_GOOGLE_AUTH_TOKEN=${GOOGLE_AUTH_TOKEN}'")
-        elif grep -iq 'okta-auth-token and okta-domainname variables are both mandatory' "${TMPFILE}"; then
-            log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
-            rm -f "${TMPFILE}"
+    if ! [[ "${EXTRA[*]}" =~ AUTH_TOKEN ]] && ! [[ "${EXTRA[*]}" =~ LDAP_ ]]; then
+        TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
+        trap 'clear_tmp ${TMPFILE}' EXIT
+
+        if /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" 2>&1 | tee "${TMPFILE}"; then
+            # Success
+            if grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
+                AZURE_AUTH_TOKEN=$(grep -E -o 'Your Azure Authentication token is:.+' "${TMPFILE}" | cut -d: -f2-)
+                UNIT_OVERRIDE+=("Environment='FYDE_AZURE_AUTH_TOKEN=${AZURE_AUTH_TOKEN}'")
+            elif grep -q 'Your Google Suite token is:' "${TMPFILE}"; then
+                GOOGLE_AUTH_TOKEN=$(grep -E -o 'Your Google Suite token is:.+' "${TMPFILE}" | cut -d: -f2-)
+                UNIT_OVERRIDE+=("Environment='FYDE_GOOGLE_AUTH_TOKEN=${GOOGLE_AUTH_TOKEN}'")
+            else
+                log_entry "ERROR" "Something failed. Check the log above."
+                exit 2
+            fi
+        else
+            # Error
+            if grep -q 'ldap_.* not set' "${TMPFILE}"; then
+                log_entry "ERROR" "Missing parameters for ldap directory. Check the documentation for required ldap arguments and specify as extra connector parameters."
+            elif grep -q 'APIFailException.*422' "${TMPFILE}"; then
+                log_entry "ERROR" "Invalid auth token. Confirm and run the script again."
+            elif grep -q 'okta-auth-token and okta-domainname variables are both mandatory' "${TMPFILE}"; then
+                log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
+            else
+                log_entry "ERROR" "Something failed. Ensure the parameters are correct and run the script again."
+            fi
             exit 2
         fi
-        rm -f "${TMPFILE}"
-    elif [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_AUTH_TOKEN"* ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" == *"OKTA_DOMAINNAME"* ]]; then
+
+    elif [[ "${EXTRA[*]}" =~ OKTA_AUTH_TOKEN ]] && ! [[ "${EXTRA[*]}" =~ OKTA_DOMAINNAME ]]; then
         log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
         exit 2
     fi
@@ -225,9 +238,8 @@ fi
 
 mkdir -p /etc/systemd/system/fyde-connector.service.d
 printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fyde-connector.service.d/10-environment.conf
-# shellcheck disable=SC2199
-if [[ -n "${EXTRA[@]+"${EXTRA[@]}"}" ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]+"${EXTRA[@]}"}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
+if [[ "${#EXTRA[@]}" -gt 0 ]]; then
+    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 
@@ -235,6 +247,9 @@ systemctl --system daemon-reload
 
 if [[ "${NO_START_SVC:-}" == "true" ]]; then
     log_entry "INFO" "Skip CloudGen Access Connector daemon start"
+    systemctl stop fyde-connector
+    log_entry "INFO" "To start service:"
+    echo "systemctl start fyde-connector"
 else
     log_entry "INFO" "Ensure CloudGen Access Connector daemon is running with latest config"
     systemctl restart fyde-connector
@@ -242,10 +257,5 @@ fi
 
 log_entry "INFO" "To check logs:"
 echo "journalctl -u fyde-connector -f"
-
-if [[ "${NO_START_SVC:-}" == true ]]; then
-    log_entry "INFO" "To start service:"
-    echo "systemctl start fyde-connector"
-fi
 
 log_entry "INFO" "Complete."
