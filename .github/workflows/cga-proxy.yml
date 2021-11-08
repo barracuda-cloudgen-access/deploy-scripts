@@ -1,0 +1,25 @@
+---
+name: CGA Proxy
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/cga-proxy.yml
+      - cga-proxy/**
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  install-cga-proxy:
+    name: Install CGA Proxy Unattended
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install
+        run: sudo ./cga-proxy/scripts/install-cga-proxy-linux.sh -u -p 443

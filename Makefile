@@ -3,7 +3,6 @@
 .ONESHELL:
 SHELL = bash
 .SHELLFLAGS = -eu -c
-.PHONY: lint
 
 ### Actions
 

@@ -1,0 +1,25 @@
+---
+name: CGA Connector
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/cga-connector.yml
+      - cga-connector/**
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  install-cga-connector:
+    name: Install CGA Connector Unattended
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install
+        run: sudo ./cga-connector/scripts/install-cga-connector-linux.sh -u
