@@ -3,6 +3,9 @@ name: Ansible
 
 on:
   pull_request:
+    paths:
+      - .github/workflows/ansible.yml
+      - shared/scripts/install-ansible.sh
 
 defaults:
   run:
@@ -38,5 +41,4 @@ jobs:
         uses: actions/checkout@v2.4.0
 
       - name: Install
-        run: |
-          ./shared/scripts/install-ansible.sh
+        run: ./shared/scripts/install-ansible.sh
