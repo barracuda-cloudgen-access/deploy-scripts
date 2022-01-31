@@ -200,7 +200,9 @@ UNIT_OVERRIDE=("[Service]" "Environment='FYDE_LOGLEVEL=${LOGLEVEL:-"info"}'")
 if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
     UNIT_OVERRIDE+=("Environment='FYDE_ENROLLMENT_TOKEN=${CONNECTOR_TOKEN}'")
 
-    if ! [[ "${EXTRA[*]}" =~ AUTH_TOKEN ]] && ! [[ "${EXTRA[*]}" =~ LDAP_ ]]; then
+    # Support bash<4.4
+    # shellcheck disable=SC2199
+    if ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" =~ AUTH_TOKEN ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" =~ LDAP_ ]]; then
         TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
         trap 'clear_tmp ${TMPFILE}' EXIT
 
@@ -230,7 +232,7 @@ if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
             exit 2
         fi
 
-    elif [[ "${EXTRA[*]}" =~ OKTA_AUTH_TOKEN ]] && ! [[ "${EXTRA[*]}" =~ OKTA_DOMAINNAME ]]; then
+    elif [[ "${EXTRA[@]+"${EXTRA[@]}"}" =~ OKTA_AUTH_TOKEN ]] && ! [[ "${EXTRA[@]+"${EXTRA[@]}"}" =~ OKTA_DOMAINNAME ]]; then
         log_entry "ERROR" "okta-auth-token and okta-domainname variables are both mandatory"
         exit 2
     fi
