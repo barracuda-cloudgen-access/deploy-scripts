@@ -35,7 +35,7 @@ jobs:
         run: yum install -y git tar
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install
         run: ./shared/scripts/install-ansible.sh
