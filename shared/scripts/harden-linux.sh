@@ -52,32 +52,32 @@ fi
 # Get parameters
 while getopts ":hp:ur:s:" OPTION 2>/dev/null; do
     case "${OPTION}" in
-        h)
-            program_help
+    h)
+        program_help
         ;;
-        p)
-            SSH_SERVER_PASSWORD_LOGIN="${OPTARG}"
+    p)
+        SSH_SERVER_PASSWORD_LOGIN="${OPTARG}"
         ;;
-        r)
-            SSH_PERMIT_ROOT_LOGIN="${OPTARG}"
+    r)
+        SSH_PERMIT_ROOT_LOGIN="${OPTARG}"
         ;;
-        s)
-            SSH_MAX_AUTH_RETRIES="${OPTARG}"
+    s)
+        SSH_MAX_AUTH_RETRIES="${OPTARG}"
         ;;
-        u)
-            UNATTENDED_INSTALL="true"
+    u)
+        UNATTENDED_INSTALL="true"
         ;;
-        \?)
-            echo "Invalid option: -${OPTARG}"
-            exit 3
+    \?)
+        echo "Invalid option: -${OPTARG}"
+        exit 3
         ;;
-        :)
-            echo "Option -${OPTARG} requires an argument." >&2
-            exit 3
+    :)
+        echo "Option -${OPTARG} requires an argument." >&2
+        exit 3
         ;;
-        *)
-            echo "${OPTARG} is an unrecognized option"
-            exit 3
+    *)
+        echo "${OPTARG} is an unrecognized option"
+        exit 3
         ;;
     esac
 done
@@ -113,7 +113,7 @@ fi
 source /etc/os-release
 
 # Install ansible
-curl -fsSLo "${TMP_DIR}/install-ansible.sh" https://url.fyde.me/ansible
+curl -fsSLo "${TMP_DIR}/install-ansible.sh" https://url.access.barracuda.com/ansible
 chmod +x "${TMP_DIR}/install-ansible.sh"
 "${TMP_DIR}/install-ansible.sh"
 
@@ -135,7 +135,7 @@ elif [[ "${ID:-}" == "amzn" ]]; then
     UPDATE_SVC="yum-cron"
 else
     COMMAND=(yum)
-    if command -v dnf &> /dev/null; then
+    if command -v dnf &>/dev/null; then
         COMMAND=(dnf)
     fi
     "${COMMAND[@]}" install -y yum-utils epel-release
