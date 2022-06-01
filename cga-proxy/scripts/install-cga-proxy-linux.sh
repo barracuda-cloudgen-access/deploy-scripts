@@ -47,58 +47,59 @@ Example for unattended instalation, skipping services start, without CloudGen Ac
 
 # Get parameters
 EXTRA=()
+REPO_URL="downloads.fyde.com"
 
 while getopts ":e:hl:np:r:s:t:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in
-        e)
-            VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
-            if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
-                VALUE="FYDE_${VALUE}"
-            fi
-            EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
+    e)
+        VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
+        if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+            VALUE="FYDE_${VALUE}"
+        fi
+        EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
         ;;
-        h)
-            program_help
+    h)
+        program_help
         ;;
-        l)
-            LOGLEVEL="${OPTARG}"
+    l)
+        LOGLEVEL="${OPTARG}"
         ;;
-        n)
-            NO_START_SVC="true"
+    n)
+        NO_START_SVC="true"
         ;;
-        p)
-            PUBLIC_PORT="${OPTARG}"
+    p)
+        PUBLIC_PORT="${OPTARG}"
         ;;
-        r)
-            REDIS_HOST="${OPTARG}"
+    r)
+        REDIS_HOST="${OPTARG}"
         ;;
-        s)
-            REDIS_PORT="${OPTARG}"
+    s)
+        REDIS_PORT="${OPTARG}"
         ;;
-        t)
-            PROXY_TOKEN="${OPTARG}"
-            if ! [[ "${PROXY_TOKEN:-}" =~ ^http[s]?://[^/]+/proxies/v[0-9]+/enrollment/[0-9a-f-]+\?proxy_auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
-                echo "CloudGen Access Proxy enrollment token is invalid, please try again"
-                exit 3
-            fi
-        ;;
-        u)
-            UNATTENDED_INSTALL="true"
-        ;;
-        z)
-            SKIP_NTP="true"
-        ;;
-        \?)
-            echo "Invalid option: -${OPTARG}"
+    t)
+        PROXY_TOKEN="${OPTARG}"
+        if ! [[ "${PROXY_TOKEN:-}" =~ ^http[s]?://[^/]+/proxies/v[0-9]+/enrollment/[0-9a-f-]+\?proxy_auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
+            echo "CloudGen Access Proxy enrollment token is invalid, please try again"
             exit 3
+        fi
         ;;
-        :)
-            echo "Option -${OPTARG} requires an argument." >&2
-            exit 3
+    u)
+        UNATTENDED_INSTALL="true"
         ;;
-        *)
-            echo "${OPTARG} is an unrecognized option"
-            exit 3
+    z)
+        SKIP_NTP="true"
+        ;;
+    \?)
+        echo "Invalid option: -${OPTARG}"
+        exit 3
+        ;;
+    :)
+        echo "Option -${OPTARG} requires an argument." >&2
+        exit 3
+        ;;
+    *)
+        echo "${OPTARG} is an unrecognized option"
+        exit 3
         ;;
     esac
 done
@@ -212,18 +213,17 @@ fi
 
 log_entry "INFO" "Add CloudGen repository"
 if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
-    REPO_URL="downloads.fyde.com"
     wget -q -O - "https://${REPO_URL}/fyde-public-key.asc" | apt-key add -
-    bash -c "cat > /etc/apt/sources.list.d/fyde.list <<EOF
+    cat >/etc/apt/sources.list.d/fyde.list <<EOF
 deb https://${REPO_URL}/apt stable main
-EOF"
+EOF
     sudo apt update
 elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
-    yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
+    yum-config-manager -y --add-repo "https://${REPO_URL}/fyde.repo"
 fi
 
 # Set Journald configuration
-echo "RateLimitBurst=10000" >> /etc/systemd/journald.conf
+echo "RateLimitBurst=10000" >>/etc/systemd/journald.conf
 systemctl restart systemd-journald.service
 
 # CloudGen Envoy Proxy
@@ -239,7 +239,7 @@ systemctl enable envoy
 if [ "${PUBLIC_PORT}" -lt 1024 ]; then
     log_entry "INFO" "Configure Envoy Proxy"
     mkdir -p /etc/systemd/system/envoy.service.d
-    cat > /etc/systemd/system/envoy.service.d/10-add-cap-net-bind.conf <<EOF
+    cat >/etc/systemd/system/envoy.service.d/10-add-cap-net-bind.conf <<EOF
 [Service]
 Capabilities=CAP_NET_BIND_SERVICE+ep
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
@@ -285,23 +285,23 @@ if [[ -n "${REDIS_HOST:-}" ]]; then
 fi
 
 mkdir -p /etc/systemd/system/fydeproxy.service.d
-printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+printf "%s\n" "${UNIT_OVERRIDE[@]}" >/etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
 if [[ "${#EXTRA[@]}" -gt 0 ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fydeproxy.service.d/10-environment.conf
+    printf "Environment='%s'\n" "${EXTRA[@]}" >>/etc/systemd/system/fydeproxy.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fydeproxy.service.d/10-environment.conf
 
 log_entry "INFO" "Configure the firewall"
 if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
-    if systemctl status ufw &> /dev/null; then
+    if systemctl status ufw &>/dev/null; then
         ufw allow "${PUBLIC_PORT}/tcp"
         ufw reload
     else
         log_entry "WARNING" "UFW not started, skipping configuration"
     fi
 elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
-    if systemctl status firewalld &> /dev/null; then
+    if systemctl status firewalld &>/dev/null; then
         firewall-cmd --zone=public --add-port="${PUBLIC_PORT}/tcp" --permanent
         firewall-cmd --reload
     else
