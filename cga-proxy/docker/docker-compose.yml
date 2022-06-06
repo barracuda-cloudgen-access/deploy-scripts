@@ -31,3 +31,4 @@ services:
 
 networks:
   cga:
+    name: cga
