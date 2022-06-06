@@ -4,7 +4,7 @@ version: '3.5'
 services:
 
 
-  envoy-proxy:
+  envoy:
     networks:
       - cga-test
 
