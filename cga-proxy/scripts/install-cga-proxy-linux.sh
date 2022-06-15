@@ -53,7 +53,7 @@ while getopts ":e:hl:np:r:s:t:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in
     e)
         VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
-        if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+        if ! [[ "${VALUE}" =~ ^FYDE_ ]] && ! [[ "${VALUE}" =~ ^DISABLE_ ]]; then
             VALUE="FYDE_${VALUE}"
         fi
         EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
@@ -159,7 +159,7 @@ else
 
         while [[ -n "${KV:-}" ]]; do
             VALUE="$(echo "${KV}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
-            if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+            if ! [[ "${VALUE}" =~ ^FYDE_ ]] && ! [[ "${VALUE}" =~ ^DISABLE_ ]]; then
                 VALUE="FYDE_${VALUE}"
             fi
             EXTRA+=("${VALUE}=$(echo "${KV}" | cut -d= -f2-)")
