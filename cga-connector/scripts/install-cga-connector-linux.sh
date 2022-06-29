@@ -22,50 +22,57 @@ Available parameters:
     exit 0
 }
 
+function validate_connector_token() {
+    if [[ "${1}" =~ ^https:\/\/[a-zA-Z0-9.-]+\.(fyde\.com|access\.barracuda\.com)\/connectors/v[0-9]+\/[0-9]+\?auth_token=[0-9a-zA-Z]+\&tenant_id=[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
 # Get parameters
 EXTRA=()
 while getopts ":e:hl:nt:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in
-        e)
-            VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
-            if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
-                VALUE="FYDE_${VALUE}"
-            fi
-            EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
+    e)
+        VALUE="$(echo "${OPTARG}" | cut -d= -f1 | tr '[:lower:]-' '[:upper:]_')"
+        if ! [[ "${VALUE}" =~ ^FYDE_ ]]; then
+            VALUE="FYDE_${VALUE}"
+        fi
+        EXTRA+=("${VALUE}=$(echo "${OPTARG}" | cut -d= -f2-)")
         ;;
-        h)
-            program_help
+    h)
+        program_help
         ;;
-        l)
-            LOGLEVEL="${OPTARG}"
+    l)
+        LOGLEVEL="${OPTARG}"
         ;;
-        n)
-            NO_START_SVC="true"
+    n)
+        NO_START_SVC="true"
         ;;
-        t)
-            CONNECTOR_TOKEN="${OPTARG}"
-            if ! [[ "${CONNECTOR_TOKEN:-}" =~ ^http[s]?://[^/]+/connectors/v[0-9]+/[0-9a-f]+\?auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
-                echo "CloudGen Access Connector enrollment token is invalid, please try again"
-                exit 3
-            fi
-        ;;
-        u)
-            UNATTENDED_INSTALL="true"
-        ;;
-        z)
-            SKIP_NTP="true"
-        ;;
-        \?)
-            echo "Invalid option: -${OPTARG}"
+    t)
+        CONNECTOR_TOKEN="${OPTARG}"
+        if ! validate_connector_token "${CONNECTOR_TOKEN:-}"; then
+            echo "CloudGen Access Connector enrollment token is invalid, please try again"
             exit 3
+        fi
         ;;
-        :)
-            echo "Option -${OPTARG} requires an argument." >&2
-            exit 3
+    u)
+        UNATTENDED_INSTALL="true"
         ;;
-        *)
-            echo "${OPTARG} is an unrecognized option"
-            exit 3
+    z)
+        SKIP_NTP="true"
+        ;;
+    \?)
+        echo "Invalid option: -${OPTARG}"
+        exit 3
+        ;;
+    :)
+        echo "Option -${OPTARG} requires an argument." >&2
+        exit 3
+        ;;
+    *)
+        echo "${OPTARG} is an unrecognized option"
+        exit 3
         ;;
     esac
 done
@@ -109,7 +116,7 @@ else
             echo ""
             if [[ -z "${CONNECTOR_TOKEN:-}" ]]; then
                 log_entry "ERROR" "CloudGen Access Connector enrollment token cannot be empty"
-            elif ! [[ "${CONNECTOR_TOKEN:-}" =~ ^http[s]?://[^/]+/connectors/v[0-9]+/[0-9a-f]+\?auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
+            elif ! validate_connector_token "${CONNECTOR_TOKEN:-}"; then
                 log_entry "ERROR" "CloudGen Access Connector enrollment token is invalid, please try again"
                 unset CONNECTOR_TOKEN
             fi
@@ -239,9 +246,9 @@ if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
 fi
 
 mkdir -p /etc/systemd/system/fyde-connector.service.d
-printf "%s\n" "${UNIT_OVERRIDE[@]}" > /etc/systemd/system/fyde-connector.service.d/10-environment.conf
+printf "%s\n" "${UNIT_OVERRIDE[@]}" >/etc/systemd/system/fyde-connector.service.d/10-environment.conf
 if [[ "${#EXTRA[@]}" -gt 0 ]]; then
-    printf "Environment='%s'\n" "${EXTRA[@]}" >> /etc/systemd/system/fyde-connector.service.d/10-environment.conf
+    printf "Environment='%s'\n" "${EXTRA[@]}" >>/etc/systemd/system/fyde-connector.service.d/10-environment.conf
 fi
 chmod 600 /etc/systemd/system/fyde-connector.service.d/10-environment.conf
 
