@@ -189,6 +189,9 @@ deb https://${REPO_URL}/apt stable main
 EOF"
     sudo apt update
 elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
+    # Quick hack for "Error: GPG check FAILED"
+    # The signature will be updated for next releases
+    export OPENSSL_ENABLE_SHA1_SIGNATURES=1
     yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
 fi
 
