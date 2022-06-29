@@ -45,6 +45,13 @@ Example for unattended instalation, skipping services start, without CloudGen Ac
 
 }
 
+function validate_proxy_token() {
+    if [[ "${1}" =~ ^https:\/\/[a-zA-Z0-9.-]+\.(fyde\.com|access\.barracuda\.com)\/proxies/v[0-9]+\/enrollment\/[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\?proxy_auth_token=[0-9a-zA-Z]+\&tenant_id=[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
 # Get parameters
 EXTRA=()
 REPO_URL="downloads.fyde.com"
@@ -78,7 +85,7 @@ while getopts ":e:hl:np:r:s:t:uz" OPTION 2>/dev/null; do
         ;;
     t)
         PROXY_TOKEN="${OPTARG}"
-        if ! [[ "${PROXY_TOKEN:-}" =~ ^http[s]?://[^/]+/proxies/v[0-9]+/enrollment/[0-9a-f-]+\?proxy_auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
+        if ! validate_proxy_token "${PROXY_TOKEN:-}"; then
             echo "CloudGen Access Proxy enrollment token is invalid, please try again"
             exit 3
         fi
@@ -142,7 +149,7 @@ else
         echo ""
         if [[ -z "${PROXY_TOKEN:-}" ]]; then
             log_entry "ERROR" "CloudGen Access Proxy enrollment link cannot be empty"
-        elif ! [[ "${PROXY_TOKEN:-}" =~ ^http[s]?://[^/]+/proxies/v[0-9]+/enrollment/[0-9a-f-]+\?proxy_auth_token=[^\&]+\&tenant_id=[0-9a-f-]+$ ]]; then
+        elif ! validate_proxy_token "${PROXY_TOKEN:-}"; then
             log_entry "ERROR" "CloudGen Access Proxy enrollment token is invalid, please try again"
             unset PROXY_TOKEN
         fi
