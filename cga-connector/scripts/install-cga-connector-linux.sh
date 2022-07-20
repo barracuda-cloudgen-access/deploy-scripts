@@ -29,8 +29,28 @@ function validate_connector_token() {
     return 1
 }
 
+function use_authorize_command() {
+    local first="${1}"
+    local second="1.3.20"
+    local x y
+
+    if [[ "${first}" != "0.0.1" ]]; then
+        while [[ "${first}" || "${second}" ]]; do
+            x=${first%%.*} y=${second%%.*}
+            [[ $((10#${x:-0})) -gt $((10#${y:-0})) ]] && return 0 # first is greater
+            [[ $((10#${x:-0})) -lt $((10#${y:-0})) ]] && return 1 # second is greater
+            first="${first:${#x}+1}"
+            second="${second:${#y}+1}"
+        done
+    fi
+
+    return 0 # versions are equal
+}
+
 # Get parameters
 EXTRA=()
+REPO_URL="downloads.access.barracuda.com"
+
 while getopts ":e:hl:nt:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in
     e)
@@ -182,7 +202,6 @@ fi
 
 log_entry "INFO" "Add Fyde repository"
 if [[ "${ID_LIKE:-}${ID}" =~ debian ]]; then
-    REPO_URL="downloads.fyde.com"
     wget -q -O - "https://${REPO_URL}/fyde-public-key.asc" | apt-key add -
     bash -c "cat > /etc/apt/sources.list.d/fyde.list <<EOF
 deb https://${REPO_URL}/apt stable main
@@ -192,7 +211,7 @@ elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     # Quick hack for "Error: GPG check FAILED"
     # The signature will be updated for next releases
     export OPENSSL_ENABLE_SHA1_SIGNATURES=1
-    yum-config-manager -y --add-repo https://downloads.fyde.com/fyde.repo
+    yum-config-manager -y --add-repo "https://${REPO_URL}/fyde.repo"
 fi
 
 log_entry "INFO" "Install CloudGen Access Connector"
@@ -202,6 +221,9 @@ elif [[ "${ID_LIKE:-}" =~ rhel ]]; then
     yum -y install fyde-connector
 fi
 systemctl enable fyde-connector
+
+CONNECTOR_VERSION="$(/usr/bin/fyde-connector --version)"
+log_entry "INFO" "Installed version is ${CONNECTOR_VERSION}"
 
 log_entry "INFO" "Configure CloudGen Access Connector"
 
@@ -216,9 +238,18 @@ if ! [[ "${UNATTENDED_INSTALL:-}" == "true" ]]; then
         TMPFILE="$(mktemp --tmpdir fyde-connector.XXXXXXX)"
         trap 'clear_tmp ${TMPFILE}' EXIT
 
-        if /usr/bin/fyde-connector --dry-run --run-once "--enrollment-token=${CONNECTOR_TOKEN}" 2>&1 | tee "${TMPFILE}"; then
+        CONNECTOR_COMMAND_ARGS=(authorize)
+
+        # Check for older authentication process
+        if ! use_authorize_command "${CONNECTOR_VERSION}"; then
+            CONNECTOR_COMMAND_ARGS=(--dry-run --run-once)
+        fi
+
+        if /usr/bin/fyde-connector "--enrollment-token=${CONNECTOR_TOKEN}" "${CONNECTOR_COMMAND_ARGS[@]}" 2>&1 | tee "${TMPFILE}"; then
             # Success
-            if grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
+            if grep -q 'Authorization was successful' "${TMPFILE}"; then
+                echo "continue and do nothing" >/dev/null
+            elif grep -q 'Your Azure Authentication token is:' "${TMPFILE}"; then
                 AZURE_AUTH_TOKEN=$(grep -E -o 'Your Azure Authentication token is:.+' "${TMPFILE}" | cut -d: -f2-)
                 UNIT_OVERRIDE+=("Environment='FYDE_AZURE_AUTH_TOKEN=${AZURE_AUTH_TOKEN}'")
             elif grep -q 'Your Google Suite token is:' "${TMPFILE}"; then
