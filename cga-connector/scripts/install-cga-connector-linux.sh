@@ -49,7 +49,7 @@ function use_authorize_command() {
 
 # Get parameters
 EXTRA=()
-REPO_URL="downloads.fyde.com"
+REPO_URL="downloads.access.barracuda.com"
 
 while getopts ":e:hl:nt:uz" OPTION 2>/dev/null; do
     case "${OPTION}" in

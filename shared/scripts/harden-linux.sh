@@ -155,7 +155,7 @@ EOF
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Origins-Pattern {
-        "site=downloads.fyde.com,component=main";
+        "site=downloads.access.barracuda.com,component=main";
 };
 EOF
 else
