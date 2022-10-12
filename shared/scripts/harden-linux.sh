@@ -187,6 +187,7 @@ tee "${TMP_DIR}"/playbook.yml <<EOF
     - ssh_hardening
     - os_hardening
   vars:
+    os_auth_pam_sssd_enable: false
     ssh_max_auth_retries: "${SSH_MAX_AUTH_RETRIES}"
     ssh_permit_root_login: "${SSH_PERMIT_ROOT_LOGIN}"
     ssh_server_password_login: ${SSH_SERVER_PASSWORD_LOGIN}
