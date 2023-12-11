@@ -10,7 +10,7 @@ services:
     environment:
       - FYDE_PROXY_HOST=orchestrator
       - FYDE_PROXY_PORT=50051
-    image: fydeinc/envoyproxy-centos:latest
+    image: fydeinc/envoyproxy:latest
     networks:
       - cga
     ports:
