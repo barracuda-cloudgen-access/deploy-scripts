@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: envoy-proxy
-          image: fydeinc/envoyproxy-centos:latest
+          image: fydeinc/envoyproxy:latest
           imagePullPolicy: Always
           env:
             - name: LOGLEVEL
